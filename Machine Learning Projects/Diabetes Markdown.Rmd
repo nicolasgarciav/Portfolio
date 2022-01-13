@@ -1,0 +1,319 @@
+---
+title: "Assignment 1"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Assignment 1 ML
+
+```{r}
+library(tidyverse)
+library(psych)
+library(GGally)
+library(caret)
+library(xgboost)
+library(ROCR)
+library(MLTools)
+```
+
+
+```{r}
+dia <- read.csv("Diabetes.csv", header = TRUE, sep = ";")
+dia
+```
+
+```{r}
+
+```
+
+Como podemos observar la variable diabetes es categorica, ya que solo tiene dos valores (0 si no tiene diabetes, 1 si tiene). Tenemos que cambiar diabetes a una variable categorica
+
+```{r}
+dia$DIABETES <- as.numeric(dia$DIABETES)
+dia$PREGNANT <- as.numeric(dia$PREGNANT)
+dia$GLUCOSE <- as.numeric(dia$GLUCOSE)
+dia$BLOODPRESS <- as.numeric(dia$BLOODPRESS)
+dia$SKINTHICKNESS <- as.numeric(dia$SKINTHICKNESS)
+dia$INSULIN <- as.numeric(dia$INSULIN)
+dia$AGE <- as.numeric(dia$AGE)
+str(dia)
+```
+
+Hemos convertido la variable Diabetes a factor y las demas a numericas.
+
+Podemos ver como en las variables GLUCOSE, BLOODPRESS y SKINTHICKNESS hay valores que son 0. No tiene mucho sentido que sean 0. Solo hay 5 valores de glucosa que son 0, 35 de BLOODPRESS, pero sin embargo hay 227 de skinthickness. En vez de borrar los datos, vamos a sustituirlos por la mediana (SKINTHICKNESS). Tambien hay 374 valores en los cuales el nivel de insulina es 0!!!!!!!!!
+
+```{r}
+dia %>% 
+  filter(INSULIN > 250) %>% 
+  nrow()
+```
+
+```{r}
+summarise(dia)
+head(dia)
+
+dia
+```
+
+```{r}
+ggplot(dia$DIABETES) +
+  geom_histogram(aes(x=stat(count),y =stat(density)))
+```
+
+```{r}
+si_no <- table(dia$DIABETES)
+si_no
+
+ggplot(si_no) +
+  geom_bar(aes(x=si_no,y=stat(density)))
+
+
+barplot(prop.table(table(dia$DIABETES)))
+```
+
+```{r}
+ggplot(aes(x=dia$DIABETES, y = GLUCOSE))
+```
+
+```{r}
+describe(dia)
+```
+
+```{r}
+ins <- dia %>% 
+  filter(BLOODPRESS > 40)
+ins
+```
+
+
+```{r}
+ggplot( data = ins) +
+  geom_histogram(aes(x=BLOODPRESS,y=stat(density)),fill ="lightblue",color= "red", binwidth = 10)+
+  geom_density(aes(BLOODPRESS),color= "darkgreen")
+```
+
+```{r}
+dia %>% 
+  count(cut_width(BLOODPRESS, 5))
+```
+
+
+
+
+
+
+```{r}
+blood <- dia %>% 
+  filter(dia$BLOODPRESS > 40)
+  
+  
+  
+s_blood<- sample(blood$BLOODPRESS, size = 35, replace = TRUE)
+
+s_blood1 <- as_data_frame(s_blood)
+
+nrow(s_blood1)
+
+ggplot( data = s_blood1) +
+  geom_histogram(aes(x=value,y=stat(density)),fill ="lightblue",color= "red", binwidth = 10)+
+  geom_density(aes(value),color= "darkgreen")
+```
+
+
+
+
+```{r}
+dia$SKINTHICKNESS[dia$SKINTHICKNESS == 0] <- NA
+dia$BLOODPRESS[dia$BLOODPRESS == 0] <- NA
+dia
+mean_dia<-dia
+mean_dia
+mean_dia$SKINTHICKNESS[is.na(mean_dia$SKINTHICKNESS)]<-median(mean_dia$SKINTHICKNESS, na.rm = TRUE)
+mean_dia$SKINTHICKNESS <- as.integer(mean_dia$SKINTHICKNESS)
+mean_dia$BLOODPRESS[is.na(mean_dia$BLOODPRESS)]<-median(mean_dia$BLOODPRESS, na.rm = TRUE)
+mean_dia$BLOODPRESS <- as.integer(mean_dia$BLOODPRESS)
+mean_dia
+
+```
+
+
+```{r}
+dia <- mean_dia %>% 
+  filter(BODYMASSINDEX != 0)
+```
+
+```{r}
+ggpairs(dia, aes(col=DIABETES))
+str(dia)
+dia$DIABETES <- as.factor(dia$DIABETES)
+
+```
+
+```{r}
+levels(dia$DIABETES) <- c("NO", "YES")
+str(dia)
+```
+
+```{r}
+dia_2 <- dia
+
+names(dia_2) <- c("X0","X1","X2","X3","X4","X5","X6","X7","Y")
+
+make.names(dia_2) ~ .,
+
+```
+
+```{r}
+regressor=train(DIABETES~ BODYMASSINDEX+PEDIGREEFUNC+GLUCOSE+INSULIN+BLOODPRESS+SKINTHICKNESS+AGE+PREGNANT, data= dia, method = "xgbTree",trControl = trainControl("cv", number = 10),scale=T)
+
+varImp(regressor)
+
+plot(regressor)
+```
+
+```{r}
+dia$PREGNANT <- as.numeric(dia$PREGNANT)
+dia$GLUCOSE <- as.numeric(dia$GLUCOSE)
+dia$BLOODPRESS <- as.numeric(dia$BLOODPRESS)
+dia$SKINTHICKNESS <- as.numeric(dia$SKINTHICKNESS)
+dia$INSULIN <- as.numeric(dia$INSULIN)
+dia$AGE <- as.numeric(dia$AGE)
+str(dia)
+```
+
+```{r}
+ggplot(dia) +
+  geom_point(aes(x=INSULIN,y=DIABETES))
+```
+
+
+
+## KNN Model
+```{r}
+## Divide the data into training and test sets ---------------------------------------------------
+set.seed(150) #For replication
+#create random 80/20 % split
+trainIndex <- createDataPartition(dia$DIABETES,      #output variable. createDataPartition creates proportional partitions
+                                  p = 0.8,      #split probability for training
+                                  list = FALSE, #Avoid output as a list
+                                  times = 1)
+```
+
+
+
+```{r}
+#obtain training and test sets
+fTR <- dia_2[trainIndex,]
+fTS <- dia_2[-trainIndex,]
+```
+
+```{r}
+#Create dataset to include model predictions
+fTR_eval <- fTR
+fTS_eval <- fTS
+```
+
+
+
+```{r}
+## Initialize trainControl -----------------------------------------------------------------------
+ctrl <- trainControl(method = "cv",                        #k-fold cross-validation
+                     number = 10,                          #Number of folds
+                     summaryFunction = defaultSummary,     #Performance summary for comparing models in hold-out samples.
+                     classProbs = TRUE)                    #Compute class probs in Hold-out samples
+```
+
+```{r}
+set.seed(150) #For replication
+#Train knn model model.
+#Knn contains 1 tuning parameter k (number of neigbors). Three options:
+#  - Train with a fixed parameter: tuneGrid = data.frame(k = 5),
+#  - Try with a range of values specified in tuneGrid: tuneGrid = data.frame(k = seq(2,120,4)),
+#  - Caret chooses 10 values: tuneLength = 10,
+knn.fit = train(make.names(dia_2) ~ ., ~ ., #formula for specifying inputs and outputs.
+                data = fTR,   #Training dataset 
+                method = "knn",
+                preProcess = c("center","scale"),
+                #tuneGrid = data.frame(k = 5),
+                tuneGrid = data.frame(k = seq(3,115,4)),
+                #tuneLength = 10,
+                trControl = ctrl,
+                metric = "Accuracy")
+knn.fit #information about the settings
+ggplot(knn.fit) #plot the summary metric as a function of the tuning parameter
+knn.fit$finalModel #information about final model trained
+```
+
+```{r}
+fTR_eval$knn_prob <- predict(knn.fit, type="prob" , newdata = fTR) # predict probabilities
+fTR_eval$knn_pred <- predict(knn.fit, type="raw" , newdata = fTR) # predict classes 
+#test
+fTS_eval$knn_prob <- predict(knn.fit, type="prob" , newdata = fTS) # predict probabilities
+fTS_eval$knn_pred <- predict(knn.fit, type="raw" , newdata = fTS) # predict classes 
+
+
+#Plot classification in a 2 dimensional space
+Plot2DClass(fTR[,1:2], #Input variables of the model
+            fTR$Y,     #Output variable
+            knn.fit,#Fitted model with caret
+            var1 = "GLUCOSE", var2 = "INSULIN", #variables that define x and y axis
+            selClass = "YES")     #Class output to be analyzed 
+```
+
+
+## Decision Trees
+
+```{r}
+set.seed(150) #For replication
+#create random 80/20 % split
+trainIndex <- createDataPartition(dia_2$Y,      #output variable. createDataPartition creates proportional partitions
+                                  p = 0.8,      #split probability for training
+                                  list = FALSE, #Avoid output as a list
+                                  times = 1)    #only one partition
+```
+
+```{r}
+#obtain training and test sets
+fTR <- dia_2[trainIndex,]
+fTS <- dia_2[-trainIndex,]
+inputs <- 1:2
+```
+
+
+```{r}
+## Initialize trainControl -----------------------------------------------------------------------
+ctrl <- trainControl(method = "cv",                        #k-fold cross-validation
+                     number = 10,                          #Number of folds
+                     summaryFunction = defaultSummary,     #Performance summary for comparing models in hold-out samples.
+                     classProbs = TRUE)                    #Compute class probs in Hold-out samples
+```
+
+
+```{r}
+library(rpart)
+library(rpart.plot)
+library(partykit)
+```
+ 
+```{r}
+tree.fit <- train(x = fTR[,inputs],  #Input variables.
+                 y = fTR$Y,   #Output variable
+                 method = "rpart",   #Decision tree with cp as tuning parameter
+                 control = rpart.control(minsplit = 5,  # Minimum number of obs in node to keep cutting
+                                        minbucket = 5), # Minimum number of obs in a terminal node
+                 parms = list(split = "gini"),          # impuriry measure
+                 #tuneGrid = data.frame(cp = 0.1), # TRY this: tuneGrid = data.frame(cp = 0.25),
+                 #tuneLength = 10,
+                 tuneGrid = data.frame(cp = seq(0,0.1,0.0005)),
+                 trControl = ctrl, 
+                 metric = "Accuracy")
+tree.fit #information about the resampling settings
+ggplot(tree.fit) #plot the summary metric as a function of the tuning parameter
+summary(tree.fit)  #information about the model trained
+tree.fit$finalModel #Cuts performed and nodes. Also shows the number and percentage of cases in each node.
+```
+
